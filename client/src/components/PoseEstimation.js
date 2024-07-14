@@ -82,7 +82,7 @@ const PoseEstimation = () => {
       await tf.setBackend("webgl");
 
       const detectorConfig = {
-        modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+        modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
       };
       const detector = await poseDetection.createDetector(
         poseDetection.SupportedModels.MoveNet,
@@ -129,14 +129,18 @@ const PoseEstimation = () => {
 
         const poses = await detector.estimatePoses(video);
 
-        if (poses.length > 0) {
-          const keypoints = poses[0].keypoints.map((keypoint) => ({
+        poses.forEach((pose, index) => {
+          const keypoints = pose.keypoints.map((keypoint) => ({
             ...keypoint,
             x: canvas.width - (keypoint.x / video.videoWidth) * canvas.width, // Mirror X coordinate
             y: (keypoint.y / video.videoHeight) * canvas.height,
           }));
 
           const creature = creatures[currentCreature];
+
+          // Use different colors for each person
+          const hue = (index * 137) % 360; // Golden angle in degrees
+          ctx.strokeStyle = `hsla(${hue}, 100%, 50%, 0.7)`;
 
           creature.limbs(ctx, keypoints);
           creature.eyes(ctx, keypoints);
@@ -146,13 +150,13 @@ const PoseEstimation = () => {
             keypoints.forEach((keypoint) => {
               ctx.beginPath();
               ctx.arc(keypoint.x, keypoint.y, 5, 0, 2 * Math.PI);
-              ctx.fillStyle = "blue";
+              ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
               ctx.fill();
               ctx.fillStyle = "white";
               ctx.fillText(keypoint.name, keypoint.x + 5, keypoint.y - 5);
             });
           }
-        }
+        });
 
         requestAnimationFrame(detectPose);
       };
