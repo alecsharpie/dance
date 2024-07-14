@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/dance/static/css/main.f855e6bc.css",
+    "main.js": "/dance/static/js/main.eb9b3f2d.js",
+    "static/js/453.419a5d54.chunk.js": "/dance/static/js/453.419a5d54.chunk.js",
+    "index.html": "/dance/index.html",
+    "main.f855e6bc.css.map": "/dance/static/css/main.f855e6bc.css.map",
+    "main.eb9b3f2d.js.map": "/dance/static/js/main.eb9b3f2d.js.map",
+    "453.419a5d54.chunk.js.map": "/dance/static/js/453.419a5d54.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.f855e6bc.css",
+    "static/js/main.eb9b3f2d.js"
+  ]
+}
