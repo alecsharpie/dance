@@ -1,33 +1,9 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import * as tf from '@tensorflow/tfjs';
-import * as poseDetection from '@tensorflow-models/pose-detection';
+import React, { useRef, useEffect, useState, useCallback } from "react";
+import * as tf from "@tensorflow/tfjs";
+import * as poseDetection from "@tensorflow-models/pose-detection";
 
 const creatures = {
   blob: {
-    body: (ctx, keypoints) => {
-      const neck = keypoints.find((kp) => kp.name === "neck");
-      const leftHip = keypoints.find((kp) => kp.name === "left_hip");
-      const rightHip = keypoints.find((kp) => kp.name === "right_hip");
-
-      if (neck && leftHip && rightHip) {
-        ctx.beginPath();
-        ctx.moveTo(neck.x, neck.y);
-        ctx.quadraticCurveTo(
-          (leftHip.x + rightHip.x) / 2,
-          (leftHip.y + rightHip.y) / 2,
-          (leftHip.x + rightHip.x) / 2,
-          Math.max(leftHip.y, rightHip.y)
-        );
-        ctx.quadraticCurveTo(
-          (leftHip.x + rightHip.x) / 2,
-          (leftHip.y + rightHip.y) / 2,
-          neck.x,
-          neck.y
-        );
-        ctx.fillStyle = "rgba(0, 255, 0, 0.5)";
-        ctx.fill();
-      }
-    },
     eyes: (ctx, keypoints) => {
       const leftEye = keypoints.find((kp) => kp.name === "left_eye");
       const rightEye = keypoints.find((kp) => kp.name === "right_eye");
@@ -96,17 +72,22 @@ const PoseEstimation = () => {
 
   useEffect(() => {
     updateCanvasSize();
-    window.addEventListener('resize', updateCanvasSize);
-    return () => window.removeEventListener('resize', updateCanvasSize);
+    window.addEventListener("resize", updateCanvasSize);
+    return () => window.removeEventListener("resize", updateCanvasSize);
   }, [updateCanvasSize]);
 
   useEffect(() => {
     const initializeTF = async () => {
       await tf.ready();
-      await tf.setBackend('webgl');
+      await tf.setBackend("webgl");
 
-      const detectorConfig = {modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING};
-      const detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, detectorConfig);
+      const detectorConfig = {
+        modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+      };
+      const detector = await poseDetection.createDetector(
+        poseDetection.SupportedModels.MoveNet,
+        detectorConfig
+      );
       setDetector(detector);
     };
 
@@ -134,66 +115,45 @@ const PoseEstimation = () => {
       const detectPose = async () => {
         const video = videoRef.current;
         const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.save();
-        ctx.scale(-1, 1);
-        ctx.translate(-canvas.width, 0);
-
-        if (debugMode) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        }
-
-        const poses = await detector.estimatePoses(video);
-
-        poses.forEach(pose => {
-          pose.keypoints.forEach(keypoint => {
-            const x = (keypoint.x / video.videoWidth) * canvas.width;
-            const y = (keypoint.y / video.videoHeight) * canvas.height;
-            ctx.beginPath();
-            ctx.arc(x, y, 5, 0, 2 * Math.PI);
-            ctx.fillStyle = 'red';
-            ctx.fill();
-          });
-        });
-
-        ctx.restore();
-        requestAnimationFrame(detectPose);
-      };
-
-      detectPose();
-    }
-  }, [detector, isVideoReady, debugMode, canvasSize]);
-
-  useEffect(() => {
-    if (detector && videoRef.current && canvasRef.current && isVideoReady) {
-      const detectPose = async () => {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
         const ctx = canvas.getContext("2d");
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.save();
-        ctx.scale(-1, 1);
-        ctx.translate(-canvas.width, 0);
 
         if (debugMode) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          // Draw mirrored video
+          ctx.save();
+          ctx.scale(-1, 1);
+          ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+          ctx.restore();
         }
 
         const poses = await detector.estimatePoses(video);
 
         if (poses.length > 0) {
-          const keypoints = poses[0].keypoints;
+          const keypoints = poses[0].keypoints.map((keypoint) => ({
+            ...keypoint,
+            x: canvas.width - (keypoint.x / video.videoWidth) * canvas.width, // Mirror X coordinate
+            y: (keypoint.y / video.videoHeight) * canvas.height,
+          }));
+
           const creature = creatures[currentCreature];
 
-          creature.body(ctx, keypoints);
           creature.limbs(ctx, keypoints);
           creature.eyes(ctx, keypoints);
+
+          // Debug: Draw keypoints
+          if (debugMode) {
+            keypoints.forEach((keypoint) => {
+              ctx.beginPath();
+              ctx.arc(keypoint.x, keypoint.y, 5, 0, 2 * Math.PI);
+              ctx.fillStyle = "blue";
+              ctx.fill();
+              ctx.fillStyle = "white";
+              ctx.fillText(keypoint.name, keypoint.x + 5, keypoint.y - 5);
+            });
+          }
         }
 
-        ctx.restore();
         requestAnimationFrame(detectPose);
       };
 
