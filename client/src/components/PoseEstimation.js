@@ -92,6 +92,9 @@ const PoseEstimation = () => {
     } finally {
       setIsChangingMode(false);
     }
+    // get a warning that detector should be included here
+    // ignore this, as it would be a circular dependency
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [multiPoseMode]);
 
   useEffect(() => {
