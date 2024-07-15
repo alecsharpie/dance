@@ -43,7 +43,6 @@ const creatures = {
             points[2].y
           );
           ctx.lineWidth = 10;
-          ctx.strokeStyle = "rgba(0, 200, 0, 0.7)";
           ctx.stroke();
         }
       });
@@ -61,14 +60,39 @@ const PoseEstimation = () => {
   const [debugMode, setDebugMode] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 640, height: 480 });
   const [currentCreature, setCurrentCreature] = useState("blob");
+  const [multiPoseMode, setMultiPoseMode] = useState(false);
+  const [isChangingMode, setIsChangingMode] = useState(false);
 
   const updateCanvasSize = useCallback(() => {
     if (containerRef.current) {
       const width = containerRef.current.clientWidth;
-      const height = window.innerHeight - 100; // Leave 100px for title and settings
+      const height = window.innerHeight - 100;
       setCanvasSize({ width, height });
     }
   }, []);
+
+  const createDetector = useCallback(async () => {
+    setIsChangingMode(true);
+    if (detector) {
+      await detector.dispose();
+    }
+    try {
+      const detectorConfig = {
+        modelType: multiPoseMode
+          ? poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING
+          : poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+      };
+      const newDetector = await poseDetection.createDetector(
+        poseDetection.SupportedModels.MoveNet,
+        detectorConfig
+      );
+      setDetector(newDetector);
+    } catch (error) {
+      console.error("Error creating detector:", error);
+    } finally {
+      setIsChangingMode(false);
+    }
+  }, [multiPoseMode]);
 
   useEffect(() => {
     updateCanvasSize();
@@ -80,30 +104,34 @@ const PoseEstimation = () => {
     const initializeTF = async () => {
       await tf.ready();
       await tf.setBackend("webgl");
-
-      const detectorConfig = {
-        modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING,
-      };
-      const detector = await poseDetection.createDetector(
-        poseDetection.SupportedModels.MoveNet,
-        detectorConfig
-      );
-      setDetector(detector);
+      createDetector();
     };
 
     initializeTF();
-  }, []);
+  }, [createDetector]);
+
+  useEffect(() => {
+    if (!isChangingMode) {
+      createDetector();
+    }
+  }, [multiPoseMode, createDetector, isChangingMode]);
 
   useEffect(() => {
     const setupCamera = async () => {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      const video = videoRef.current;
-      if (video) {
-        video.srcObject = stream;
-        video.onloadedmetadata = () => {
-          video.play();
-          setIsVideoReady(true);
-        };
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+        });
+        const video = videoRef.current;
+        if (video) {
+          video.srcObject = stream;
+          video.onloadedmetadata = () => {
+            video.play();
+            setIsVideoReady(true);
+          };
+        }
+      } catch (error) {
+        console.error("Error setting up camera:", error);
       }
     };
 
@@ -111,41 +139,53 @@ const PoseEstimation = () => {
   }, []);
 
   useEffect(() => {
-    if (detector && videoRef.current && canvasRef.current && isVideoReady) {
-      const detectPose = async () => {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext("2d");
+    let animationFrameId;
+    let isDetecting = false;
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const detectPose = async () => {
+      if (
+        isChangingMode ||
+        !detector ||
+        !videoRef.current ||
+        !canvasRef.current ||
+        !isVideoReady ||
+        isDetecting
+      ) {
+        animationFrameId = requestAnimationFrame(detectPose);
+        return;
+      }
 
-        if (debugMode) {
-          // Draw mirrored video
-          ctx.save();
-          ctx.scale(-1, 1);
-          ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-          ctx.restore();
-        }
+      isDetecting = true;
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext("2d");
 
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (debugMode) {
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+        ctx.restore();
+      }
+
+      try {
         const poses = await detector.estimatePoses(video);
 
         poses.forEach((pose, index) => {
           const keypoints = pose.keypoints.map((keypoint) => ({
             ...keypoint,
-            x: canvas.width - (keypoint.x / video.videoWidth) * canvas.width, // Mirror X coordinate
+            x: canvas.width - (keypoint.x / video.videoWidth) * canvas.width,
             y: (keypoint.y / video.videoHeight) * canvas.height,
           }));
 
           const creature = creatures[currentCreature];
-
-          // Use different colors for each person
-          const hue = (index * 137) % 360; // Golden angle in degrees
+          const hue = multiPoseMode ? (index * 137) % 360 : 120;
           ctx.strokeStyle = `hsla(${hue}, 100%, 50%, 0.7)`;
 
           creature.limbs(ctx, keypoints);
           creature.eyes(ctx, keypoints);
 
-          // Debug: Draw keypoints
           if (debugMode) {
             keypoints.forEach((keypoint) => {
               ctx.beginPath();
@@ -157,24 +197,45 @@ const PoseEstimation = () => {
             });
           }
         });
+      } catch (error) {
+        console.error("Error in pose estimation:", error);
+      }
 
-        requestAnimationFrame(detectPose);
-      };
+      isDetecting = false;
+      animationFrameId = requestAnimationFrame(detectPose);
+    };
 
-      detectPose();
-    }
-  }, [detector, isVideoReady, debugMode, canvasSize, currentCreature]);
+    detectPose();
 
-  const toggleDebugMode = () => {
-    setDebugMode(!debugMode);
-  };
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [
+    detector,
+    isVideoReady,
+    debugMode,
+    canvasSize,
+    currentCreature,
+    multiPoseMode,
+    isChangingMode,
+  ]);
 
-  const changeCreature = () => {
+  const toggleDebugMode = useCallback(() => setDebugMode((prev) => !prev), []);
+
+  const changeCreature = useCallback(() => {
     const creatureNames = Object.keys(creatures);
     const currentIndex = creatureNames.indexOf(currentCreature);
     const nextIndex = (currentIndex + 1) % creatureNames.length;
     setCurrentCreature(creatureNames[nextIndex]);
-  };
+  }, [currentCreature]);
+
+  const toggleMultiPoseMode = useCallback(() => {
+    if (!isChangingMode) {
+      setMultiPoseMode((prev) => !prev);
+    }
+  }, [isChangingMode]);
 
   return (
     <div
@@ -214,7 +275,16 @@ const PoseEstimation = () => {
         <button onClick={toggleDebugMode} style={{ marginRight: "10px" }}>
           {debugMode ? "Disable Debug Mode" : "Enable Debug Mode"}
         </button>
-        <button onClick={changeCreature}>Change Creature</button>
+        <button onClick={changeCreature} style={{ marginRight: "10px" }}>
+          Change Creature
+        </button>
+        <button onClick={toggleMultiPoseMode} disabled={isChangingMode}>
+          {isChangingMode
+            ? "Changing Mode..."
+            : multiPoseMode
+            ? "Single Person Mode"
+            : "Multiple People Mode"}
+        </button>
       </div>
     </div>
   );
