@@ -1,3 +1,5 @@
+## This is deprecated, see [alecsharpie/dancing-creature](https://github.com/alecsharpie/dancing-creature) instead
+
 
 #### run locally
 ```
