@@ -1,4 +1,4 @@
-## This is deprecated, see [alecsharpie/dancing-creature](https://github.com/alecsharpie/dancing-creature) instead
+## This is deprecated, see [alecsharpie/dancing-creatures](https://github.com/alecsharpie/dancing-creatures) instead
 
 
 #### run locally
